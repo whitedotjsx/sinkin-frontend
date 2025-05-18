@@ -2,7 +2,7 @@
 
 If you wish to deploy the project for production, you can pack the project by `npm run build` and serve the static files at `build/`
 
-Either you should set all the requests to index.html because it is a static SPA or the routes will not behave as expected
+Since it's a static SPA, you need to route all requests to index.html, or the application routes won't work correctly.
 
 TLDR:
 
