@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import type { ApiKey, ErrorResponseFromSinkin, Image, Img2ImgRequest, LoRA, Model, SuccessfulImageGenerationResponse } from '$lib';
-	import { exportSave, getDateFilename, importSave, promptFile } from '$lib';
+	import { exportSave, getDateFilename, importSave, isGalleryOpen, promptFile } from '$lib';
 	import autosize from 'svelte-autosize';
 
 	import { Button, Input, Modal, ModalFooter, Spinner, Styles, Toast } from '@sveltestrap/sveltestrap';
 	import { onMount } from 'svelte';
 	import { writable } from 'svelte/store';
+	import Gallery from '../components/gallery.page.svelte';
 
   const sinkinHost = 'https://sinkin.ai/'
 
@@ -600,369 +600,372 @@
 
 </script>
 <Styles />
-
-<main class="bg-[#1A1A1A] flex flex-col justify-evenly items-center gap-8 py-12 px-4">
-
-  <Modal body header={modalTitle} isOpen={openModal} toggle={toggleModal} theme="light" on:close={() => {
-    modalSetInput = false
-  }}>
-    <p>{@html modalText}</p>
-    {#if modalSetInput}
-      <Input bind:value={configExportNameInput} placeholder="Insert your configuration name here (optional)" theme="light" type="text"/>
-    {/if}
-    <ModalFooter>
-      {#if modalCallback !== null}
-      <Button color="danger" onclick={async () => {
-        if (modalCallback !== null) {
-          await modalCallback()
-          toggleModal()
-        }
-      }}>Confirm</Button>
-      {#if !modalSetInput}
-      <Button color="primary" onclick={() => {
-        modalCallback = null
-        toggleModal()
-      }}>Cancel</Button>
-      {/if}
-      {:else}
-      <Button color="primary" onclick={toggleModal}>Ok</Button>
-      {/if}
-    </ModalFooter>
-  </Modal>
-  <div class="fixed top-2 right-2">
-    <Toast autohide body header={toastHeader} isOpen={openToast} on:close={() => (openToast = false)}>
-      {@html toastBody}
-    </Toast>
-  </div>
-
-<section class="text-blue-500 flex flex-col md:flex-row gap-3 justify-center items-center">
-  <h2 class="text-4xl">SinkinAI API frontend</h2>
-  <p class="text-white">
-    API keys Available: {$loadedApiKeys.length}
-    <br/>
-    Models saved: {$savedModels.length}
-    <br/>
-    Images saved: {$savedImages.length}
-    <br/>
-    LoRAs saved: {$savedLoras.length}
-    <br/>
-    Credits left: {$creditsLeft}
-  </p>
-  <div class="flex flex-col gap-1 justify-center items-center">
-    <Button outline color="primary" onclick={() => {
-      modalSetInput = true
-      showConfirmationModal({
-        title: 'Do you want to give a name for this save?',
-        description: 'Add a name below',
-        callbackFn: () => {
-          exportSave("sinkinAPI-" + getDateFilename(undefined, configExportNameInput === '' ? undefined : configExportNameInput), {
-            savedApiKeys: $loadedApiKeys,
-            savedImages: $savedImages,
-            savedLoRAs: $savedLoras,
-            savedModels: $savedModels
-          })
-          modalSetInput = false
-        }
-      })
-    }}>Export configuration</Button>
-    <Button outline color="success" onclick={async () => {
-      const file = await promptFile()
-      if (file === null) {
-        showToast({
-          title: 'Select a valid file to import',
-          description: 'The selected file should be exported from this application, if not, it can broke your saved data'
-        })
-        return
-      }
-      const result = await importSave(file, {
-        savedApiKeys: $loadedApiKeys,
-        savedImages: $savedImages,
-        savedLoRAs: $savedLoras,
-        savedModels: $savedModels
-      })
-      if (result) {
-        showToast({
-          title: 'The importation is done, please reload the page',
-          description: 'The page will be reloaded automatically in 5 seconds'
-        })
-        setTimeout(() => {
-          window.location.reload()
-        }, 5000)
-      } else {
-        showToast({
-          title: 'The file is invalid',
-          description: 'Are you sure the file is a configuration file from this app? check console if so'
-        })
-      }
-    }}>Import configuration</Button>
-    <Button outline color="danger" onclick={() => {
-      showConfirmationModal({
-        title: 'Are you sure?',
-        description: 'This wil <strong>DELETE ALL your saved data</strong>',
-        callbackFn: () => {
-          deleteAllImages(),
-          deleteAllKeys(),
-          deleteAllLoRAs(),
-          deleteAllModels()
-        }
-      })
-    }}>Delete configuration</Button>
-  </div>
-</section>
-
-<section class="text-blue-500 flex flex-col gap-3 justify-center items-center min-w-[32%]">
-  <h2>
-    Generation Zone
-  </h2>
-  <textarea use:autosize bind:value={prompt} placeholder="Insert your prompt here" class="block p-2.5 w-full text-sm rounded-lg bg-[#212529] border-gray-600 placeholder-gray-300 text-white focus:ring-blue-500 focus:border-blue-500"></textarea>
-  <Input bind:value={quantityOfImages} placeholder="Quantity of images" theme="dark" type="number"/>
-  {#if $savedLoras.length > 0}
-  <Input on:change={(e) => {
-    loraSelected = $savedLoras.find(lora => lora.id === e.target.value) ?? noLora
-    }} placeholder="Select a LoRA" theme="dark" type="select">
-    {#each [noLora, ...$savedLoras] as option}
-    <option value={option}>{option.title}</option>
-  {/each}
-  </Input>
+{#if $isGalleryOpen}
+  <Gallery></Gallery>
   {:else}
-  <Input placeholder="No LoRAs saved" theme="dark" type="number" disabled/>
-  {/if}
-  <!-- Model selection -->
-  {#if $savedModels.length > 0}
-  <Input bind:value={selectedModel} placeholder="Select a model" theme="dark" type="select">
-    {#each $savedModels as option}
-    <option value={option}>{option.title}</option>
-  {/each}
-  </Input>
-  {:else}
-  <Input placeholder="No models saved" theme="dark" type="number" disabled/>
-  {/if}
-  <h5>Base Image (Image to Image Generation)</h5>
-  <Input bind:value={fileSelected} placeholder="Base Image" theme="dark" type="file" accept="image/*"/>
-  <button onclick={() => advancedOptions = !advancedOptions}>
-    <h5>{advancedOptions ? 'Hide' : 'Show'} advanced options</h5>
-  </button>
+  <main class="bg-[#1A1A1A] flex flex-col justify-evenly items-center gap-8 py-12 px-4">
   
-  {#if advancedOptions}
-    <div class="flex flex-col gap-3">
-      <div class="flex flex-col gap-1">
-        <h5>Scheduler</h5>
-        <p>Default: DPMSolverMultistep or model's default</p>
-        <Input bind:value={scheduler} placeholder="Select the scheduler" theme="dark" type="select">
-          {#each ["DDIM", "K_EULER", "K_EULER_ANCESTRAL", "DPMSolverMultistep", "PNDM", "KLMS"] as scheduler}
-          <option value={scheduler}>{scheduler}</option>
-          {/each}
-        </Input>
+    <Modal body header={modalTitle} isOpen={openModal} toggle={toggleModal} theme="light" on:close={() => {
+      modalSetInput = false
+    }}>
+      <p>{@html modalText}</p>
+      {#if modalSetInput}
+        <Input bind:value={configExportNameInput} placeholder="Insert your configuration name here (optional)" theme="light" type="text"/>
+      {/if}
+      <ModalFooter>
+        {#if modalCallback !== null}
+        <Button color="danger" onclick={async () => {
+          if (modalCallback !== null) {
+            await modalCallback()
+            toggleModal()
+          }
+        }}>Confirm</Button>
+        {#if !modalSetInput}
+        <Button color="primary" onclick={() => {
+          modalCallback = null
+          toggleModal()
+        }}>Cancel</Button>
+        {/if}
+        {:else}
+        <Button color="primary" onclick={toggleModal}>Ok</Button>
+        {/if}
+      </ModalFooter>
+    </Modal>
+    <div class="fixed top-2 right-2">
+      <Toast autohide body header={toastHeader} isOpen={openToast} on:close={() => (openToast = false)}>
+        {@html toastBody}
+      </Toast>
+    </div>
+  
+  <section class="text-blue-500 flex flex-col md:flex-row gap-3 justify-center items-center">
+    <h2 class="text-4xl">SinkinAI API frontend</h2>
+    <p class="text-white">
+      API keys Available: {$loadedApiKeys.length}
+      <br/>
+      Models saved: {$savedModels.length}
+      <br/>
+      Images saved: {$savedImages.length}
+      <br/>
+      LoRAs saved: {$savedLoras.length}
+      <br/>
+      Credits left: {$creditsLeft}
+    </p>
+    <div class="flex flex-col gap-1 justify-center items-center">
+      <Button outline color="primary" onclick={() => {
+        modalSetInput = true
+        showConfirmationModal({
+          title: 'Do you want to give a name for this save?',
+          description: 'Add a name below',
+          callbackFn: () => {
+            exportSave("sinkinAPI-" + getDateFilename(undefined, configExportNameInput === '' ? undefined : configExportNameInput), {
+              savedApiKeys: $loadedApiKeys,
+              savedImages: $savedImages,
+              savedLoRAs: $savedLoras,
+              savedModels: $savedModels
+            })
+            modalSetInput = false
+          }
+        })
+      }}>Export configuration</Button>
+      <Button outline color="success" onclick={async () => {
+        const file = await promptFile()
+        if (file === null) {
+          showToast({
+            title: 'Select a valid file to import',
+            description: 'The selected file should be exported from this application, if not, it can broke your saved data'
+          })
+          return
+        }
+        const result = await importSave(file, {
+          savedApiKeys: $loadedApiKeys,
+          savedImages: $savedImages,
+          savedLoRAs: $savedLoras,
+          savedModels: $savedModels
+        })
+        if (result) {
+          showToast({
+            title: 'The importation is done, please reload the page',
+            description: 'The page will be reloaded automatically in 5 seconds'
+          })
+          setTimeout(() => {
+            window.location.reload()
+          }, 5000)
+        } else {
+          showToast({
+            title: 'The file is invalid',
+            description: 'Are you sure the file is a configuration file from this app? check console if so'
+          })
+        }
+      }}>Import configuration</Button>
+      <Button outline color="danger" onclick={() => {
+        showConfirmationModal({
+          title: 'Are you sure?',
+          description: 'This wil <strong>DELETE ALL your saved data</strong>',
+          callbackFn: () => {
+            deleteAllImages(),
+            deleteAllKeys(),
+            deleteAllLoRAs(),
+            deleteAllModels()
+          }
+        })
+      }}>Delete configuration</Button>
+    </div>
+  </section>
+  
+  <section class="text-blue-500 flex flex-col gap-3 justify-center items-center min-w-[32%]">
+    <h2>
+      Generation Zone
+    </h2>
+    <textarea use:autosize bind:value={prompt} placeholder="Insert your prompt here" class="block p-2.5 w-full text-sm rounded-lg bg-[#212529] border-gray-600 placeholder-gray-300 text-white focus:ring-blue-500 focus:border-blue-500"></textarea>
+    <Input bind:value={quantityOfImages} placeholder="Quantity of images" theme="dark" type="number"/>
+    {#if $savedLoras.length > 0}
+    <Input on:change={(e) => {
+      loraSelected = $savedLoras.find(lora => lora.id === e.target.value) ?? noLora
+      }} placeholder="Select a LoRA" theme="dark" type="select">
+      {#each [noLora, ...$savedLoras] as option}
+      <option value={option}>{option.title}</option>
+    {/each}
+    </Input>
+    {:else}
+    <Input placeholder="No LoRAs saved" theme="dark" type="number" disabled/>
+    {/if}
+    <!-- Model selection -->
+    {#if $savedModels.length > 0}
+    <Input bind:value={selectedModel} placeholder="Select a model" theme="dark" type="select">
+      {#each $savedModels as option}
+      <option value={option}>{option.title}</option>
+    {/each}
+    </Input>
+    {:else}
+    <Input placeholder="No models saved" theme="dark" type="number" disabled/>
+    {/if}
+    <h5>Base Image (Image to Image Generation)</h5>
+    <Input bind:value={fileSelected} placeholder="Base Image" theme="dark" type="file" accept="image/*"/>
+    <button onclick={() => advancedOptions = !advancedOptions}>
+      <h5>{advancedOptions ? 'Hide' : 'Show'} advanced options</h5>
+    </button>
+    
+    {#if advancedOptions}
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-1">
+          <h5>Scheduler</h5>
+          <p>Default: DPMSolverMultistep or model's default</p>
+          <Input bind:value={scheduler} placeholder="Select the scheduler" theme="dark" type="select">
+            {#each ["DDIM", "K_EULER", "K_EULER_ANCESTRAL", "DPMSolverMultistep", "PNDM", "KLMS"] as scheduler}
+            <option value={scheduler}>{scheduler}</option>
+            {/each}
+          </Input>
+        </div>
+        <div class="flex flex-col gap-1">
+          <h5>LoRA scale</h5>
+          <p>Default: 0.75</p>
+          <Input bind:value={loraScale} placeholder="Insert the scale" theme="dark" type="number"/>
+        </div>
+        <div class="flex flex-col gap-1">
+          <h5>Inference steps</h5>
+          <p>Default: 30, range 1-50</p>
+          <Input bind:value={numberOfInferenceSteps} placeholder="Inference steps" theme="dark" type="number"/>
+        </div>
+        <div class="flex flex-col gap-1">
+          <h5>Negative prompt</h5>
+          <Input bind:value={negativePrompt} placeholder="Negative prompt" theme="dark" type="text"/>
+          <Input bind:value={useDefaultNegativePrompt} label="Use default negative prompt" theme="dark" type="checkbox" checked/>
+        </div>
+        <div class="flex flex-col gap-1">
+          <h5>Width</h5>
+          <p>Default: 512, max 896</p>
+          <Input bind:value={width} placeholder="Select the width" theme="dark" type="select">
+            {#each commonSizes as w}
+            <option value={w}>{w}px</option>
+            {/each}
+          </Input>
+        </div>
+        <div class="flex flex-col gap-1">
+          <h5>Height</h5>
+          <p>Default: 768, max 896</p>
+          <Input bind:value={height} placeholder="Select the height" theme="dark" type="select">
+            {#each commonSizes as h}
+            <option value={h}>{h}px</option>
+            {/each}
+          </Input>
+        </div>
+        <div class="flex flex-col gap-1">
+          <h5>Guidance scale</h5>
+          <p>Default: 7.5 or model's default, range 1-20</p>
+          <Input bind:value={guidanceScale} placeholder="Guidance scale" theme="dark" type="number"/>
+        </div>
+        <div class="flex flex-col gap-1">
+          <h5>Seed</h5>
+          <p>Default: -1 (random)</p>
+          <Input bind:value={seed} placeholder="Insert the seed" theme="dark" type="number"/>
+        </div>
+        <div class="flex flex-col gap-1">
+          <h5>Model Version</h5>
+          <p class="text-red-500">Warning: Do not touch this if you are unsure of the model versions</p>
+          <Input bind:value={modelVersion} placeholder="Model version" theme="dark" type="number"/>
+        </div>
       </div>
-      <div class="flex flex-col gap-1">
-        <h5>LoRA scale</h5>
-        <p>Default: 0.75</p>
-        <Input bind:value={loraScale} placeholder="Insert the scale" theme="dark" type="number"/>
-      </div>
-      <div class="flex flex-col gap-1">
-        <h5>Inference steps</h5>
-        <p>Default: 30, range 1-50</p>
-        <Input bind:value={numberOfInferenceSteps} placeholder="Inference steps" theme="dark" type="number"/>
-      </div>
-      <div class="flex flex-col gap-1">
-        <h5>Negative prompt</h5>
-        <Input bind:value={negativePrompt} placeholder="Negative prompt" theme="dark" type="text"/>
-        <Input bind:value={useDefaultNegativePrompt} label="Use default negative prompt" theme="dark" type="checkbox" checked/>
-      </div>
-      <div class="flex flex-col gap-1">
-        <h5>Width</h5>
-        <p>Default: 512, max 896</p>
-        <Input bind:value={width} placeholder="Select the width" theme="dark" type="select">
-          {#each commonSizes as w}
-          <option value={w}>{w}px</option>
-          {/each}
-        </Input>
-      </div>
-      <div class="flex flex-col gap-1">
-        <h5>Height</h5>
-        <p>Default: 768, max 896</p>
-        <Input bind:value={height} placeholder="Select the height" theme="dark" type="select">
-          {#each commonSizes as h}
-          <option value={h}>{h}px</option>
-          {/each}
-        </Input>
-      </div>
-      <div class="flex flex-col gap-1">
-        <h5>Guidance scale</h5>
-        <p>Default: 7.5 or model's default, range 1-20</p>
-        <Input bind:value={guidanceScale} placeholder="Guidance scale" theme="dark" type="number"/>
-      </div>
-      <div class="flex flex-col gap-1">
-        <h5>Seed</h5>
-        <p>Default: -1 (random)</p>
-        <Input bind:value={seed} placeholder="Insert the seed" theme="dark" type="number"/>
-      </div>
-      <div class="flex flex-col gap-1">
-        <h5>Model Version</h5>
-        <p class="text-red-500">Warning: Do not touch this if you are unsure of the model versions</p>
-        <Input bind:value={modelVersion} placeholder="Model version" theme="dark" type="number"/>
-      </div>
+      {/if}
+      <div class="flex flex-row gap-2">
+        <Button outline color="primary" onclick={async () => {
+          loading = true
+          try {
+            await generateNewImage()
+      } catch (error) {
+        console.error(error)
+      }
+      loading = false
+      }} disabled={loading}>Generate image</Button>
+    <Button outline color="warning" onclick={() => {
+      isGalleryOpen.set(true)
+    }} disabled={loading}>Go to the gallery</Button>
+    </div>
+    {#if loading}
+    <div class="flex flex-row gap-2 justify-center items-center">
+      <Spinner size="sm" color="primary" />
+      <p class="mt-4 text-white">
+        Waiting server response...
+      </p>
     </div>
     {/if}
-    <div class="flex flex-row gap-2">
-      <Button outline color="primary" onclick={async () => {
-        loading = true
-        try {
-          await generateNewImage()
-    } catch (error) {
-      console.error(error)
-    }
-    loading = false
-    }} disabled={loading}>Generate image</Button>
-  <Button outline color="warning" onclick={() => {
-    goto('/gallery')
-  }} disabled={loading}>Go to the gallery</Button>
-  </div>
-  {#if loading}
-  <div class="flex flex-row gap-2 justify-center items-center">
-    <Spinner size="sm" color="primary" />
-    <p class="mt-4 text-white">
-      Waiting server response...
-    </p>
-  </div>
-  {/if}
-</section>
-
-<section class="text-blue-500 flex flex-col gap-3 justify-center items-center">
-  <h2>
-    Loading zone
-  </h2>
-  <div class="flex flex-col gap-2">
-    <h3>Manage API keys</h3>
-    <p class="text-red-500">Warning: The API key should have 100 credits left if you want to add it</p>
-    <Input bind:value={apiKeyInput} placeholder="Insert your API key here" theme="dark" />
-    <div class="flex flex-col gap-1">
-      <Button outline color="primary" onclick={() => {showApiKeyInformation()}}>Information</Button>
-      <Button outline color="success" onclick={() => {addApiKey()}}>Add key</Button>
-      <Button outline color="danger" onclick={() => {
-        if (apiKeyInput === '') return
-        showConfirmationModal({
-          title: 'Are you sure?',
-          description: 'This will <strong>DELETE</strong> your selected API key stored',
-          callbackFn: removeApiKey
-        })
-      }}>Delete key</Button>
-    </div>
-  </div>
-  <div class="flex flex-col gap-2">
-    <h3>Manage Models</h3>
-    <p class="text-red-500">Warning: The model should be a valid model within the SinkinAPI (only the ID)</p>
-    <Input bind:value={modelIdInput} placeholder="Insert the model ID here" theme="dark" />
-    <Input bind:value={modelTitleInput} placeholder="Insert the model title here" theme="dark" />
-    <Input bind:value={modelDescriptionInput} placeholder="Insert the model description here" theme="dark" />
-    <div class="flex flex-col gap-1">
-      <Button outline color="success" onclick={() => {addModel()}}>Add model</Button>
-      <Button outline color="danger" onclick={() => {
-        if (modelIdInput === '') return
-        showConfirmationModal({
-          title: 'Are you sure?',
-          description: 'This will <strong>DELETE</strong> your selected model stored',
-          callbackFn: removeModel
-        })
-      }}>Delete model</Button>
-    </div>
-  </div>
-  <div class="flex flex-col gap-2">
-    <h3>Manage LoRAs</h3>
-    <p class="text-red-500">Warning: The LoRA should be a valid within the SinkinAPI (only the ID)</p>
-    <Input bind:value={loraIdInput} placeholder="Insert the LoRA ID here" theme="dark" />
-    <Input bind:value={loraTitleInput} placeholder="Insert the LoRA title here" theme="dark" />
-    <Input bind:value={loraDescriptionInput} placeholder="Insert the LoRA description here" theme="dark" />
-    <div class="flex flex-col gap-1">
-      <Button outline color="success" onclick={() => {addLoRA()}}>Add LoRA</Button>
-      <Button outline color="danger" onclick={() => {
-        if (loraIdInput === '') return
-        showConfirmationModal({
-          title: 'Are you sure?',
-          description: 'This will <strong>DELETE</strong> your selected LoRA stored',
-          callbackFn: removeLoRA
-        })
-      }}>Delete LoRA</Button>
-    </div>
-  </div>
-  <div class="flex flex-col gap-2">
-    <h3>Currently loaded data</h3>
-    <p class="text-red-500">Warning: These buttons will massively delete a field of data, be careful</p>
-    <div class="flex flex-col gap-1">
-      <Button outline color="primary" onclick={
-        () => {
-          if ($loadedApiKeys.length === 0) {
-            showToast({
-              title: 'There are not any API keys stored yet',
-              description: 'Add some first'
-            })
-          return
-          }
-          showModal({
-            title: 'Stored API keys',
-            description: JSON.stringify($loadedApiKeys, null, 2)
+  </section>
+  
+  <section class="text-blue-500 flex flex-col gap-3 justify-center items-center">
+    <h2>
+      Loading zone
+    </h2>
+    <div class="flex flex-col gap-2">
+      <h3>Manage API keys</h3>
+      <p class="text-red-500">Warning: The API key should have 100 credits left if you want to add it</p>
+      <Input bind:value={apiKeyInput} placeholder="Insert your API key here" theme="dark" />
+      <div class="flex flex-col gap-1">
+        <Button outline color="primary" onclick={() => {showApiKeyInformation()}}>Information</Button>
+        <Button outline color="success" onclick={() => {addApiKey()}}>Add key</Button>
+        <Button outline color="danger" onclick={() => {
+          if (apiKeyInput === '') return
+          showConfirmationModal({
+            title: 'Are you sure?',
+            description: 'This will <strong>DELETE</strong> your selected API key stored',
+            callbackFn: removeApiKey
           })
-        }
-      }>View saved keys</Button>
-      <Button outline color="primary" onclick={
-        () => {
-          if ($savedModels.length === 0) {
-            showToast({
-              title: 'There are not any models stored yet',
-              description: 'Add some first'
-            })
-          return
-          }
-          showModal({
-            title: 'Stored models',
-            description: JSON.stringify($savedModels, null, 2)
-          })
-        }
-      }>View saved models</Button>
-      <Button outline color="primary" onclick={
-        () => {
-          if ($savedLoras.length === 0) {
-            showToast({
-              title: 'There are not any LoRA stored yet',
-              description: 'Add some first'
-            })
-          return
-          }
-          showModal({
-            title: 'Stored LoRAs',
-            description: JSON.stringify($savedLoras, null, 2)
-          })
-        }
-      }>View saved LoRAs</Button>
-      <Button outline color="danger" onclick={() => {
-        showConfirmationModal({
-          title: 'Are you sure?',
-          description: 'This will <strong>DELETE ALL</strong> your API keys stored',
-          callbackFn: deleteAllKeys
-        })
-      }}>Delete saved keys</Button>
-      <Button outline color="danger" onclick={() => {
-        showConfirmationModal({
-          title: 'Are you sure?',
-          description: 'This will <strong>DELETE ALL</strong> your models saved',
-          callbackFn: deleteAllModels
-        })
-      }}>Delete saved models</Button>
-      <Button outline color="danger" onclick={() => {
-        showConfirmationModal({
-          title: 'Are you sure?',
-          description: 'This will <strong>DELETE ALL</strong> your LoRAs saved',
-          callbackFn: deleteAllLoRAs
-        })
-      }}>Delete saved LoRAs</Button>
-      <Button outline color="danger" onclick={() => {
-        showConfirmationModal({
-          title: 'Are you sure?',
-          description: 'This will <strong>DELETE ALL</strong> your images stored',
-          callbackFn: deleteAllImages
-        })
-      }}>Delete generated images</Button>
+        }}>Delete key</Button>
+      </div>
     </div>
-  </div>
-</section>
-</main>
+    <div class="flex flex-col gap-2">
+      <h3>Manage Models</h3>
+      <p class="text-red-500">Warning: The model should be a valid model within the SinkinAPI (only the ID)</p>
+      <Input bind:value={modelIdInput} placeholder="Insert the model ID here" theme="dark" />
+      <Input bind:value={modelTitleInput} placeholder="Insert the model title here" theme="dark" />
+      <Input bind:value={modelDescriptionInput} placeholder="Insert the model description here" theme="dark" />
+      <div class="flex flex-col gap-1">
+        <Button outline color="success" onclick={() => {addModel()}}>Add model</Button>
+        <Button outline color="danger" onclick={() => {
+          if (modelIdInput === '') return
+          showConfirmationModal({
+            title: 'Are you sure?',
+            description: 'This will <strong>DELETE</strong> your selected model stored',
+            callbackFn: removeModel
+          })
+        }}>Delete model</Button>
+      </div>
+    </div>
+    <div class="flex flex-col gap-2">
+      <h3>Manage LoRAs</h3>
+      <p class="text-red-500">Warning: The LoRA should be a valid within the SinkinAPI (only the ID)</p>
+      <Input bind:value={loraIdInput} placeholder="Insert the LoRA ID here" theme="dark" />
+      <Input bind:value={loraTitleInput} placeholder="Insert the LoRA title here" theme="dark" />
+      <Input bind:value={loraDescriptionInput} placeholder="Insert the LoRA description here" theme="dark" />
+      <div class="flex flex-col gap-1">
+        <Button outline color="success" onclick={() => {addLoRA()}}>Add LoRA</Button>
+        <Button outline color="danger" onclick={() => {
+          if (loraIdInput === '') return
+          showConfirmationModal({
+            title: 'Are you sure?',
+            description: 'This will <strong>DELETE</strong> your selected LoRA stored',
+            callbackFn: removeLoRA
+          })
+        }}>Delete LoRA</Button>
+      </div>
+    </div>
+    <div class="flex flex-col gap-2">
+      <h3>Currently loaded data</h3>
+      <p class="text-red-500">Warning: These buttons will massively delete a field of data, be careful</p>
+      <div class="flex flex-col gap-1">
+        <Button outline color="primary" onclick={
+          () => {
+            if ($loadedApiKeys.length === 0) {
+              showToast({
+                title: 'There are not any API keys stored yet',
+                description: 'Add some first'
+              })
+            return
+            }
+            showModal({
+              title: 'Stored API keys',
+              description: JSON.stringify($loadedApiKeys, null, 2)
+            })
+          }
+        }>View saved keys</Button>
+        <Button outline color="primary" onclick={
+          () => {
+            if ($savedModels.length === 0) {
+              showToast({
+                title: 'There are not any models stored yet',
+                description: 'Add some first'
+              })
+            return
+            }
+            showModal({
+              title: 'Stored models',
+              description: JSON.stringify($savedModels, null, 2)
+            })
+          }
+        }>View saved models</Button>
+        <Button outline color="primary" onclick={
+          () => {
+            if ($savedLoras.length === 0) {
+              showToast({
+                title: 'There are not any LoRA stored yet',
+                description: 'Add some first'
+              })
+            return
+            }
+            showModal({
+              title: 'Stored LoRAs',
+              description: JSON.stringify($savedLoras, null, 2)
+            })
+          }
+        }>View saved LoRAs</Button>
+        <Button outline color="danger" onclick={() => {
+          showConfirmationModal({
+            title: 'Are you sure?',
+            description: 'This will <strong>DELETE ALL</strong> your API keys stored',
+            callbackFn: deleteAllKeys
+          })
+        }}>Delete saved keys</Button>
+        <Button outline color="danger" onclick={() => {
+          showConfirmationModal({
+            title: 'Are you sure?',
+            description: 'This will <strong>DELETE ALL</strong> your models saved',
+            callbackFn: deleteAllModels
+          })
+        }}>Delete saved models</Button>
+        <Button outline color="danger" onclick={() => {
+          showConfirmationModal({
+            title: 'Are you sure?',
+            description: 'This will <strong>DELETE ALL</strong> your LoRAs saved',
+            callbackFn: deleteAllLoRAs
+          })
+        }}>Delete saved LoRAs</Button>
+        <Button outline color="danger" onclick={() => {
+          showConfirmationModal({
+            title: 'Are you sure?',
+            description: 'This will <strong>DELETE ALL</strong> your images stored',
+            callbackFn: deleteAllImages
+          })
+        }}>Delete generated images</Button>
+      </div>
+    </div>
+  </section>
+  </main>
+{/if}

@@ -1,4 +1,8 @@
+import { writable } from 'svelte/store'
+
 // place files you want to import through the `$lib` alias in this folder.
+export const isGalleryOpen = writable<boolean>(false)
+
 export interface Save {
   savedApiKeys: ApiKey[]
   savedModels: Model[]

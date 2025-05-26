@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { exportSave, getDateFilename, importSave, promptFile } from '$lib';
+	import { exportSave, getDateFilename, importSave, isGalleryOpen, promptFile } from '$lib';
 	import { Button, Modal, ModalFooter, Styles, Toast } from '@sveltestrap/sveltestrap';
 	import { onMount } from 'svelte';
 	import { writable } from 'svelte/store';
@@ -412,7 +411,7 @@
     </div>
   </section>
   <Button outline color="warning" onclick={() => {
-    goto('/')
+    isGalleryOpen.set(false)
   }}>Go to the main page</Button>
 
   <!-- Galería -->
