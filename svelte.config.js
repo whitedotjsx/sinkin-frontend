@@ -18,6 +18,10 @@ const config = {
 			precompress: false,
 			prefix: '/',
 		}),
+		paths: {
+			base: '/sinkin-frontend',
+			assets: ''
+		},
 		prerender: {
 			entries: ['*']
 		}
